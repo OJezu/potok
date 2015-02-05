@@ -1,0 +1,27 @@
+{
+  "name": "MultiPromise",
+  "version": "0.1.0",
+  "description": "Object stream replacement using promises.",
+  "main": "index.js",
+  "directories": {
+    "test": "test"
+  },
+  "dependencies": {
+    "when": "^3.7.2"
+  },
+  "devDependencies": {
+    "chai": "^1.10.0",
+    "chai-as-promised": "^4.1.1",
+    "chai-things": "^0.2.0"
+  },
+  "scripts": {
+    "test": "mocha --recursive; jshint -c jshint.json src test"
+  },
+  "keywords": [
+    "promises",
+    "streams",
+    "gulp"
+  ],
+  "author": "Krzysztof Chrapka",
+  "license": "MIT"
+}
