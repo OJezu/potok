@@ -1,19 +1,19 @@
 'use strict';
 var util = require('util');
 
-function MultiPromiseError(){
+function PotokError(){
 	this.message = arguments[0];
 	Error.captureStackTrace(this, this.constructor);
 }
-util.inherits(MultiPromiseError, Error);
+util.inherits(PotokError, Error);
 
 function WriteAfterEnd(){
 	this.message = 'Write after end.';
 	Error.captureStackTrace(this, this.constructor);
 }
-util.inherits(WriteAfterEnd, MultiPromiseError);
+util.inherits(WriteAfterEnd, PotokError);
 
 module.exports = {
-	MultiPromiseError: MultiPromiseError,
+	PotokError: PotokError,
 	WriteAfterEnd: WriteAfterEnd,
 };
