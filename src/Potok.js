@@ -92,7 +92,8 @@ function Potok(handlers, options){
 	
 	// ########### before all
 	if(this._handlers.beforeAll){
-		this._before_all_promise = when.try(this._handlers.beforeAll);
+		// when using .then() asynchronous call is guaranteed 
+		this._before_all_promise = when().then(this._handlers.beforeAll);
 	} else {
 		this._before_all_promise = when();
 	}
