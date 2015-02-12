@@ -12,9 +12,6 @@ var Potok = require('../src/Potok.js');
 var Errors = require('../src/Errors.js');
 
 describe('Potok', function(){
-	this.slow(10);
-	this.timeout(50);
-	
 	it('works with "new" in front', function(){
 		var each = function(){return true;};
 		var mp = new Potok({each: each});
@@ -256,8 +253,6 @@ describe('Potok', function(){
 			});
 			
 			it('creates result in a form of array of all promises that do not resolve to null', function(){
-				this.timeout(10);
-				this.slow(5);
 				var entries = [when.resolve('foo'), when.reject('bar'), when.resolve('baz'), when.reject('fer'), when.resolve(null)];
 				
 				var mp = Potok({});

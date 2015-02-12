@@ -1,11 +1,18 @@
 'use strict';
 var when = require('when');
 var Stream = require('stream');
-var Errors = require('./Errors.js');
+var Errors = require('./errors.js');
 
-function decorateStream(Stream){
-	Stream.prototype.chain = function(potok) {
-		if(!this.objectMode){
+function decorateStream(Stream, method_name){
+	if(Stream === undefined){
+		Stream = require('stream');
+	}
+	if(method_name === undefined){
+		method_name = 'chain';
+	}
+	
+	Stream.prototype[method_name] = function(potok) {
+		if(!this._readableState.objectMode){
 			throw new Errors.PotokError('.chain() can only be used with streams in object mode');
 		}
 		var source = this;
@@ -39,7 +46,5 @@ function decorateStream(Stream){
 		return potok;
 	};
 }
-
-Stream && decorateStream(Stream);
 
 module.exports = decorateStream;

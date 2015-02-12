@@ -1,4 +1,7 @@
 'use strict';
+
+// http://i.imgur.com/8ClIADV.jpg
+
 function DecorateWithPipe(Potok){
 	Potok.prototype.pipe = function(stream){
 		var pipe_potok = new Potok({
@@ -13,5 +16,6 @@ function DecorateWithPipe(Potok){
 		this.chain(pipe_potok);
 		return stream;
 	};
-}
+};
+
 module.exports = DecorateWithPipe;
