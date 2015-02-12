@@ -19,11 +19,13 @@ describe('Potok', function(){
 				var mp_b = Potok({});
 				mp_a.chain(mp_b);
 			});
+			
 			it('actually accepts anything with »enter« and »end« methods', function(){
 				var mp_a = Potok({});
 				var mp_b = {enter: function(){}, end: function(){}};
 				mp_a.chain(mp_b);
 			});
+			
 			it('but not accepts anything else', function(){
 				var mp_a = Potok({});
 				var mp_b = {enter: function(){}, end: 'foo'};
@@ -51,12 +53,14 @@ describe('Potok', function(){
 					mp_a.end();
 				});
 			});
+			
 			it('propagates end to chained Potok', function(done){
 				var mp_a = Potok({});
 				var mp_b = Potok({afterAll: function(){done();}});
 				mp_a.chain(mp_b);
 				mp_a.end();
 			});
+			
 			it('propagates entries and »end« even if chain happened after end', function(){
 				var hits = 0;
 				var after_all_called = false;
@@ -80,7 +84,7 @@ describe('Potok', function(){
 				
 			});
 			
-			it('spropagates errors', function(){
+			it('propagates errors', function(){
 				var mp_a = Potok({});
 				var mp_b = Potok({});
 				mp_a.enter(when.reject('foo'));
@@ -93,10 +97,10 @@ describe('Potok', function(){
 				});
 			});
 			
-			it('passes result of earlier »afterAll« handler to chained Potok', function(){
+			it('does not pass result of earlier »afterAll« handler to chained Potok', function(){
 				var mp_a = Potok({
 					afterAll: function(){
-						mp_a.finalPush('after_all_pushed');
+						mp_a.pushFinal('after_all_pushed');
 						return 'after_all';
 					}
 				});
@@ -109,7 +113,7 @@ describe('Potok', function(){
 				mp_a.end();
 				return mp_a.chain(mp_b).ended().then(function(result){
 					return when.all(result).then(function(result){
-						result.sort().should.be.deep.equal(['after_all', 'after_all_pushed', 'foo']);
+						result.sort().should.be.deep.equal(['after_all_pushed', 'foo']);
 					});
 				});
 			});
@@ -140,7 +144,7 @@ describe('Potok', function(){
 				});
 			});
 			
-			it('does not complain if chained multi_promise is ended', function(){
+			it('does not complain if chained potok is ended', function(){
 				var mp_a = Potok({});
 				var mp_b = Potok({});
 				
@@ -149,19 +153,63 @@ describe('Potok', function(){
 				return mp_a.enter('foo');
 			});
 			
-			it('passes through »null« promise just before receiver ends', function(){
-				var mp_a = Potok({}, {pass_nulls: true});
-				var mp_b = Potok({}, {pass_nulls: true});
+
+			it('does not complain if chained something-potok-like is ended', function(){
+				var mp_a = Potok({});
+				var mp_b = {
+					end: function(){},
+					enter:function(){
+						throw new Error('write after end');
+					},
+				};
 				
 				mp_a.chain(mp_b);
-				mp_a.enter(null);
 				mp_b.end();
-				mp_a.end();
-				return mp_b.ended().then(function(result){
-					return when.all(result).then(function(result){
-						result.should.be.deep.equal([null]);
-					});
+				return mp_a.enter('foo');
+			});
+
+			it('does not race', function(){
+				var p_a = Potok({
+					each: function(value){
+						return when(value).delay(10);
+					},
 				});
+				var p_b = Potok({});
+				
+				p_a.enter('foo');
+				p_a.end();
+				p_a.chain(p_b);
+				return when.all(p_b.ended()).then(function(result){
+					result.should.be.deep.equal(['foo']);
+				});
+			});
+			
+			it('crashes process if entity throws something that does not look like »Write after end«', function(done){
+				var org_onFatalRejection = when.Promise.onFatalRejection;
+				after(function(){
+					when.Promise.onFatalRejection = org_onFatalRejection;
+				});
+				when.Promise.onFatalRejection = function(rejection){
+					try{
+						rejection.value.should.be.instanceOf(Errors.PotokFatalError);
+						done();
+					} catch(err){
+						done(err);
+					}
+				};
+				
+				var mp_a = Potok({});
+				var mp_b = {
+					end: function(){},
+					enter: function(){
+						throw new Error('My hoovercraft is full of eels');
+					},
+				};
+				
+				mp_a.chain(mp_b);
+				mp_b.end();
+				mp_a.enter('foo');
+				
 			});
 		});
 	});

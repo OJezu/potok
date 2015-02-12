@@ -11,6 +11,13 @@ var when = require('when');
 var Potok = require('../src/Potok.js');
 var Errors = require('../src/Errors.js');
 
+function sortPromises(a, b){
+	a = a && a.value || a && a.reason || a;
+	b = b && b.value || b && b.reason || b;
+	return String(a).localeCompare(b);
+}
+
+
 describe('Potok', function(){
 	it('works with "new" in front', function(){
 		var each = function(){return true;};
@@ -21,6 +28,30 @@ describe('Potok', function(){
 		var each = function(){return true;};
 		var mp = Potok({each: each});
 		mp._handlers.each.should.be.equal(each);
+	});
+	it('ignores unknown options in option object prototype', function(){
+		var options = Object.create({hello: 'hi'});
+		Potok({}, options);
+	});
+	it('ignores unknown handlers in handler object prototype', function(){
+		var handlers = Object.create({hello: 'hi'});
+		Potok(handlers);
+	});
+	it('does not allow non-object options', function(){
+		try {
+			Potok({}, 'foo');
+			throw new Error('Unexpected success');
+		} catch (err){
+			err.should.be.instanceOf(Errors.PotokError);
+		}
+	});
+	it('does not allow unknown options', function(){
+		try {
+			Potok({}, {foo: 'foo'});
+			throw new Error('Unexpected success');
+		} catch (err){
+			err.should.be.instanceOf(Errors.PotokError);
+		}
 	});
 	it('accepts »beforeAll« handler', function(){
 		Potok({beforeAll: function(){}});
@@ -48,6 +79,12 @@ describe('Potok', function(){
 		} catch (err){
 			err.message.should.match(/»all« handler is declared/);
 		}
+	});
+
+	it('accepts handlers from handler object prototype', function(done){
+		var handlers = Object.create({each: function(){done();}});
+		var mp = Potok(handlers);
+		mp.enter('foo');
 	});
 	
 	it('~mocks handlers when "all" handler is set', function(){
@@ -96,20 +133,21 @@ describe('Potok', function(){
 		mp.enter(when.reject('bar'));
 		mp.end();
 		return when.all(mp.ended()).then(function(results){
-			results.sort().should.be.deep.equal(['bar_reject', 'foo_fulfil']);
+			results.sort(sortPromises).should.be.deep.equal(['bar_reject', 'foo_fulfil']);
 		});
 	});
 	
 	describe('.prototype', function(){
 		describe('.enter(promise)', function(){
-			it('rejects with WriteAfterEnd when called after end', function(){
+			it('throws with WriteAfterEnd when called after end', function(){
 				var mp = Potok({});
 				mp.end().ended().done();
-				return mp.enter().then(function(){
+				try {
+					mp.enter();
 					throw new Error('unexpected success');
-				}, function(err){
+				} catch (err){
 					err.should.be.instanceof(Errors.WriteAfterEnd);
-				});
+				};
 			});
 			it('passes through unhandled rejected promises', function(){
 				var nv = {'foo': when('foo'), 'bar': when.reject('bar')};
@@ -120,9 +158,9 @@ describe('Potok', function(){
 					mp.enter(nv[key]);
 				}
 				return when.settle(mp.end().ended()).then(function(res){
-					res.should.be.deep.equal([
-						{value: 'foo', state: 'fulfilled'},
+					res.sort(sortPromises).should.be.deep.equal([
 						{reason: 'bar', state: 'rejected'},
+						{value: 'foo', state: 'fulfilled'},
 					]);
 				});
 			});
@@ -135,9 +173,9 @@ describe('Potok', function(){
 					mp.enter(nv[key]);
 				}
 				return when.settle(mp.end().ended()).then(function(res){
-					res.should.be.deep.equal([
-						{value: 'foo', state: 'fulfilled'},
+					res.sort(sortPromises).should.be.deep.equal([
 						{value: 'bar', state: 'fulfilled'},
+						{value: 'foo', state: 'fulfilled'},
 					]);
 				});
 			});
@@ -148,9 +186,9 @@ describe('Potok', function(){
 					mp.enter(nv[key]);
 				}
 				return when.settle(mp.end().ended()).then(function(res){
-					res.should.be.deep.equal([
-						{value: 'foo', state: 'fulfilled'},
+					res.sort(sortPromises).should.be.deep.equal([
 						{reason: 'bar', state: 'rejected'},
+						{value: 'foo', state: 'fulfilled'},
 					]);
 				});
 			});
@@ -169,27 +207,6 @@ describe('Potok', function(){
 					}
 				});
 				mp.enter(10);
-				
-				return when.all(mp.ended()).then(function(result){
-					result.should.be.deep.equal([10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0]);
-				});
-			});
-			
-			it('can be quite recursive with lazy_end', function(){
-				var mp = new Potok({
-					each: function(entry){
-						return when(entry).then(function(entry){
-							if(entry > 0){
-								mp.enter(--entry);
-								return entry+1;
-							} else {
-								return entry;
-							}
-						});
-					}
-				});
-				mp.enter(10);
-				mp.lazyEnd();
 				
 				return when.all(mp.ended()).then(function(result){
 					result.should.be.deep.equal([10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0]);
@@ -261,40 +278,14 @@ describe('Potok', function(){
 				
 				return mp.end().ended().then(function(result){
 					return when.settle(result).then(function(res){
-						res.should.be.deep.equal([
-							{value: 'foo', state: 'fulfilled'},
+						res.sort(sortPromises).should.be.deep.equal([
 							{reason: 'bar', state: 'rejected'},
 							{value: 'baz', state: 'fulfilled'},
 							{reason: 'fer', state: 'rejected'},
+							{value: 'foo', state: 'fulfilled'},
 						]);
 						return true;
 					});
-				});
-			});
-			it('passes result to »afterAll« handler', function(){
-				var entries = [when.resolve('foo'), when.reject('bar'), when.resolve('baz'), when.reject('fer'), when.resolve(null)];
-				
-				var after_all_called = false;
-				
-				var mp = Potok({
-					afterAll: function(res){
-						return when.settle(res).then(function(res){
-							res.should.be.deep.equal([
-								{value: 'foo', state: 'fulfilled'},
-								{reason: 'bar', state: 'rejected'},
-								{value: 'baz', state: 'fulfilled'},
-								{reason: 'fer', state: 'rejected'},
-							]);
-							after_all_called = true;
-							return true;
-						});
-					}
-				});
-				
-				entries.forEach(mp.enter, mp);
-				
-				return mp.end().ended().then(function(){
-					after_all_called.should.be.true;
 				});
 			});
 			
@@ -311,7 +302,7 @@ describe('Potok', function(){
 				
 				return mp.end().ended().then(function(result){
 					return when.settle(result).then(function(res){
-						res.should.be.deep.equal([
+						res.sort(sortPromises).should.be.deep.equal([
 							{reason: null, state: 'rejected'},
 							{value: 'baz', state: 'fulfilled'},
 							{reason: 'fer', state: 'rejected'},
@@ -335,7 +326,7 @@ describe('Potok', function(){
 				
 				return mp.end().ended().then(function(result){
 					return when.settle(result).then(function(res){
-						res.should.be.deep.equal([
+						res.sort(sortPromises).should.be.deep.equal([
 							{value: null, state: 'fulfilled'},
 							{reason: null, state: 'rejected'},
 							{value: 'baz', state: 'fulfilled'},
@@ -348,7 +339,26 @@ describe('Potok', function(){
 		});
 		
 		describe('.lazyEnd()', function(){
-			it('allows adding tasks with ».enter()« until all already added ones are resolved');
+			it('allows adding tasks with ».enter()« until all already added ones are resolved', function(){
+				var mp = new Potok({
+					each: function(entry){
+						return when(entry).then(function(entry){
+							if(entry > 0){
+								mp.enter(--entry);
+								return entry+1;
+							} else {
+								return entry;
+							}
+						});
+					}
+				});
+				mp.enter(10);
+				mp.lazyEnd();
+				
+				return when.all(mp.ended()).then(function(result){
+					result.should.be.deep.equal([10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0]);
+				});
+			});
 		});
 		
 		describe('.ended()', function(){
@@ -360,8 +370,8 @@ describe('Potok', function(){
 			it('resolves with full output in a form of array of promises for all tasks which did not resolve to null', function(){
 				var mp = Potok({
 					afterAll: function(){
-						mp.finalPushResult('baw');
-						mp.finalPushResult(null);
+						mp.pushFinal('baw');
+						mp.pushFinal(null);
 						return 'baz';
 					}
 				});
@@ -371,15 +381,15 @@ describe('Potok', function(){
 				mp.end();
 				return mp.ended().then(function(result){
 					return when.all(result).then(function(res){
-						res.should.be.deep.equal(['foo', 'bar', 'baw']);
+						res.sort(sortPromises).should.be.deep.equal(['bar', 'baw', 'foo']);
 					});
 				});
 			});
 			it('resolves with full output in a form of array of promises for all tasks if »pass_nulls« option is on', function(){
 				var mp = Potok({
 					afterAll: function(){
-						mp.finalPushResult('baw');
-						mp.finalPushResult(null);
+						mp.pushFinal('baw');
+						mp.pushFinal(null);
 					}
 				}, {pass_nulls: true});
 				mp.enter('foo');
@@ -388,7 +398,7 @@ describe('Potok', function(){
 				mp.end();
 				return mp.ended().then(function(result){
 					return when.all(result).then(function(res){
-						res.should.be.deep.equal(['foo', null, 'bar', 'baw', null]);
+						res.sort(sortPromises).should.be.deep.equal(['bar', 'baw', 'foo', null, null,]);
 					});
 				});
 			});
@@ -412,7 +422,7 @@ describe('Potok', function(){
 				
 				return mp.end().ended().then(function(result){
 					return when.all(result).then(function(result){
-						result.sort().should.be.deep.equal(['baz', 'baz_2', 'foo', 'foo_2']);
+						result.sort().sort(sortPromises).should.be.deep.equal(['baz', 'baz_2', 'foo', 'foo_2']);
 					});
 				});
 			});
@@ -437,7 +447,7 @@ describe('Potok', function(){
 						res.sort(function(a, b){return (a.value || a.reason).localeCompare(b.value || b.reason);});
 						//yeah, I know localeCompare is slow.
 						
-						res.should.be.deep.equal([
+						res.sort(sortPromises).should.be.deep.equal([
 	  						{value: 'baz', state: 'fulfilled'},
 	  						{reason: 'baz_2', state: 'rejected'},
 	  						{value: 'foo', state: 'fulfilled'},
@@ -471,16 +481,65 @@ describe('Potok', function(){
 				mp.enter('bar');
 				return mp.end().ended().then(function(result){
 					return when.all(result).then(function(result){
-						result.should.be.deep.equal(['bar', 'bar_2']);
+						result.sort(sortPromises).should.be.deep.equal(['bar', 'bar_2']);
 					});
 				});
 			});
 		});
 		
-		describe('.finalPushResults()', function(){
-			it('can be used during »afterAll« handler');
-			it('throws when used before »afterAll« handler');
-			it('throws when used after »afterAll« handler');
+		describe('.pushFinal()', function(){
+			it('can be used during »afterAll« handler', function(){
+				var p = Potok({
+					afterAll: function(){
+						p.pushFinal('foo');
+					}, 
+				});
+				
+				return when.all(p.end().ended())
+				.then(function(result){
+					result.sort(sortPromises).should.be.deep.equal(['foo']);
+				});
+			});
+			
+			it('can be used with rejects during »afterAll« handler', function(){
+				var p = Potok({
+					afterAll: function(ke){
+						p.pushFinal(when.reject('foo'));
+						p.pushFinal(when.reject('bar'));
+					}, 
+				});
+				
+				return when.settle(p.end().ended())
+				.then(function(result){
+					result.sort(sortPromises).should.be.deep.equal([
+						{state: 'rejected', reason: 'bar'},
+						{state: 'rejected', reason: 'foo'},
+					]);
+				});
+			});
+			
+			it('throws when used before »afterAll« handler', function(){
+				var p = Potok({afterAll: function(){}});
+				try {
+					p.pushFinal('foo');
+					throw new Error('unwanted success');
+				} catch(err){
+					err.should.be.instanceOf(Errors.PotokError);
+				}
+			});
+			
+			it('throws when used after »afterAll« handler', function(){
+				var p = Potok({afterAll: function(){}});
+				
+				return p.end().ended()
+				.then(function(result){
+					p.pushFinal('foo');
+				}).then(function(){					
+					throw new Error('unwanted success');
+				}, function(err){					
+					err.should.be.instanceOf(Errors.PotokError);
+				});
+			});
 		});
 		
 	});

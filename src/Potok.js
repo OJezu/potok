@@ -21,7 +21,7 @@ function Potok(handlers, options){
 	
 	this._chained = [];
 	this._closed = false; //don't accept new promises from .enter 
-	this._results_closed = false; //don't accept new promises from .pushResult
+	this._results_closed = false; //don't accept new promises from .push
 	this._pass_nulls = undefined;
 
 	this._before_all_promise = undefined;
@@ -73,9 +73,9 @@ function Potok(handlers, options){
 		this._handlers = {
 			afterAll: function(){
 				var promise = handlers.all(all_promises);
-				this.pushFinal.bind(promise);
-				return promise;
-			},
+				this.pushFinal(promise);
+				return null;
+			}.bind(this),
 			each: function(promise){
 				all_promises.push(promise);
 				return null;
@@ -93,7 +93,7 @@ function Potok(handlers, options){
 	// ########### before all
 	if(this._handlers.beforeAll){
 		// when using .then() asynchronous call is guaranteed 
-		this._before_all_promise = when().then(this._handlers.beforeAll);
+		this._before_all_promise = when(this).then(this._handlers.beforeAll);
 	} else {
 		this._before_all_promise = when();
 	}
@@ -111,7 +111,7 @@ Potok.prototype._poolForPromiseResolution = function _poolForPromiseResolution()
 	}.bind(this));
 };
 
-Potok.prototype._processResults = function(promises){
+Potok.prototype._removeNullsFromResults = function(promises){
 	var self = this;
 	return when.settle(this._promises)
 	.then(function(promises){
@@ -137,22 +137,22 @@ Potok.prototype._end = function _end(lazy_end){
 	this._closed = !lazy_end;
 
 	//no return
-	when(this._before_all_promise).with(this).then(function(){
+	when(this._before_all_promise)
+	.with(this)
+	.then(function(){
 		return this._poolForPromiseResolution(); // all .entry() called
 	}).tap(function(){
 		this._closed = true;
 		this._results_closed = true;
-	}).then(this._processResults.bind(this, this._promises)) //all promised entered
+	}).then(this._removeNullsFromResults.bind(this, this._promises)) //all promised entered
 	.then(function(results){
 		if(this._handlers.afterAll){
-			var after_all = when.try(this._handlers.afterAll, results);
-			
-			//this._promises.push(after_all); //for future chains			
-			this._chained.forEach(this._passX.bind(this, after_all));
+			var overwrite_push = Object.create(this);
+			overwrite_push.push = this.pushFinal;
+			var after_all = when.try(this._handlers.afterAll, overwrite_push);
 			
 			return after_all
-				.catch(noop)
-				.then(this._processResults.bind(this, this._promises));
+				.then(this._removeNullsFromResults.bind(this, this._promises));
 		} else {
 			return results;
 		}
@@ -173,70 +173,85 @@ Potok.prototype.lazyEnd = function lazyEnd(){
 
 Potok.prototype.enter = function enter(value){
 	if(this._closed){
-		return when.reject(new Errors.WriteAfterEnd());
+		throw new Errors.WriteAfterEnd();
 	}
 	
 	// silence potentially unhandled rejections:
 	// https://github.com/cujojs/when/blob/master/docs/api.md#edge-cases
 	when(value).catch(noop);
+	
 	if(this._handlers.each){
-		this.push(when(this._before_all_promise)
-			.then(this._handlers.each.bind(null, when(value)))
+		this.push(
+			when(this._before_all_promise)
+				.then(this._handlers.each.bind(null, when(value), this))
 		);
-	} else {	
-		this.push(when(this._before_all_promise)
-			.yield(value)
-			.then(this._handlers.eachFulfilled, this._handlers.eachRejected)
+	} else {
+		var wrappedEachFulfilled = this._handlers.eachFulfilled
+			&& function(value){
+				return this._handlers.eachFulfilled(value, this);
+			}.bind(this);
+		
+		var wrappedEachRejected = this._handlers.eachRejected
+			&& function(reason){
+				return this._handlers.eachRejected(reason, this);
+			}.bind(this);
+		
+		this.push(
+			when(this._before_all_promise)
+				.yield(value)
+				.then(wrappedEachFulfilled, wrappedEachRejected)
 		);
 	}
-	return when(true);
-};
-
-Potok.prototype._pushResult = function _pushResult(value){
-	this._promises.push(when(value));
-	this._chained.forEach(this._passX.bind(this, value));
 	return true;
 };
 
-Potok.prototype.pushResult = function pushResult(value){
+Potok.prototype._push = function _push(value){
+	this._promises.push(when(value));
+	this._chained.forEach(function(chained){
+		this._pass(chained, value).done();
+	}, this);
+	return true;
+};
+
+Potok.prototype.push = function push(value){
 	if(this._results_closed){
 		throw new Errors.WriteAfterEnd();
 	}
-	return this._pushResult(value);
+	return this._push(value);
 };
-Potok.prototype.push = Potok.prototype.pushResult;
 
 
-Potok.prototype.finalPushResult = function finalPushResult(value){
+Potok.prototype.pushFinal = function pushFinal(value){
 	// the below is as far as I dare to enforce proper usage of this function, anything more could get messy
 	if(!this._results_closed || this._deferred_end.promise.inspect().state !== 'pending'){
 		throw new Errors.PotokError('This special function must be called from afterAll handler before it resolves.');
 	}
-	return this._pushResult(value);
+	return this._push(value);
 };
-Potok.prototype.finalPush = Potok.prototype.finalPushResult;
 
 Potok.prototype._pass = function _pass(chained, value){
-	var pass_promise;
-	var promise = when(value);
-	if(this._pass_nulls){
-		pass_promise =  chained.enter(promise);
-	} else {
-		pass_promise = when(promise).then(function(result){
-			if(result !== null){
-				return chained.enter(promise);
-			}
-		}, chained.enter.bind(chained, promise));
-	}
-	return pass_promise
+	return when.try(function(){
+		var promise = when(value);
+		if(this._pass_nulls){
+			return chained.enter(promise);
+		} else {
+			return when(promise).then(function(result){
+				if(result !== null){
+					return chained.enter(promise);
+				}
+			}, chained.enter.bind(chained, promise));
+		}
+	}.bind(this))
 	.catch(Errors.WriteAfterEnd, noop)
 	.catch(function(error){
 		if( !(/Write after end/i.test(error.message)) ){
-			throw error;
+			var message_prefix = 'Chained potok ».enter()« method threw a non-write-after-end error:\n';
+			var trans = new Errors.PotokFatalError(message_prefix+'\t'+(error.message || error || ''));
+			trans.stack = (error.stack && message_prefix+error.stack )|| trans.stack;
+			throw trans;
 		}
 	});
 };
-Potok.prototype._passX = function _passX(promise, chained){return this._pass(chained, promise);};
 
 Potok.prototype.chain = function(chained){
 	if(  typeof(chained) !== 'object'
@@ -249,7 +264,9 @@ Potok.prototype.chain = function(chained){
 	this._chained.push(chained);
 	
 	// enter all the promises that were initialized earlier
-	this._promises.forEach(this._pass.bind(this, chained));
+	this._promises.forEach(function(promise){
+		this._pass(chained, promise).done();
+	}, this);
 	this.ended().yield(undefined).finally(chained.end.bind(chained));
 	
 	return chained;

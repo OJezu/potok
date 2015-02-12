@@ -13,7 +13,14 @@ function WriteAfterEnd(){
 }
 util.inherits(WriteAfterEnd, PotokError);
 
+function PotokFatalError(message){
+	this.message = message;
+	Error.captureStackTrace(this, this.constructor);
+}
+util.inherits(PotokFatalError, PotokError);
+
 module.exports = {
 	PotokError: PotokError,
+	PotokFatalError: PotokFatalError,
 	WriteAfterEnd: WriteAfterEnd,
 };
