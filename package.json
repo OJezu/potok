@@ -1,5 +1,5 @@
 {
-  "name": "MultiPromise",
+  "name": "potok",
   "version": "0.1.0",
   "description": "Object stream replacement using promises.",
   "main": "index.js",
@@ -11,10 +11,12 @@
   },
   "devDependencies": {
     "chai": "^1.10.0",
+    "jshint": "^2.6.0",
+    "mocha": "^2.1.0",
     "through2": "^0.6.3"
   },
   "scripts": {
-    "test": "mocha --recursive; jshint -c jshint.json src test"
+    "test": "./node_modules/mocha/bin/mocha --recursive; ./node_modules/jshint/bin/jshint src test"
   },
   "keywords": [
     "promises",
