@@ -11,12 +11,16 @@
   },
   "devDependencies": {
     "chai": "^1.10.0",
+    "coveralls": "^2.11.2",
+    "istanbul": "^0.3.5",
     "jshint": "^2.6.0",
     "mocha": "^2.1.0",
+    "mocha-lcov-reporter": "0.0.1",
     "through2": "^0.6.3"
   },
   "scripts": {
-    "test": "./node_modules/mocha/bin/mocha --recursive; ./node_modules/jshint/bin/jshint src test"
+    "test": "./node_modules/mocha/bin/mocha --recursive; ./node_modules/jshint/bin/jshint src test",
+	"coveralls": "./node_modules/istanbul/lib/cli.js cover ./node_modules/mocha/bin/_mocha --report lcovonly -- -R spec && cat ./coverage/lcov.info | ./node_modules/coveralls/bin/coveralls.js && rm -rf ./coverage"
   },
   "keywords": [
     "promises",
