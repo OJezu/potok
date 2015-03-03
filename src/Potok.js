@@ -16,20 +16,22 @@ function Potok(handlers, options){
 		options = {};
 	}
 	// ############# init
-	this._promises = [];
+	this._promises = []; //TODO: use sparse array when diverpotent=true
+	                     //      or make sure it's OK in v8 not to switch
 	this._handlers = null;
 	
 	this._chained = [];
 	this._closed = false; //don't accept new promises from .enter 
 	this._results_closed = false; //don't accept new promises from .push
-	this._pass_nulls = undefined;
+	this._pass_nulls = false;
+	this._diverpotent = false;
 
 	this._before_all_promise = undefined;
 	
 	this._deferred_end = when.defer();
 	
 	var handler_types = ['beforeAll', 'all', 'afterAll', 'each', 'eachRejected', 'eachFulfilled'];
-	var allowed_options = ['pass_nulls'];
+	var allowed_options = ['pass_nulls', 'diverpotent'];
 	
 	// ############# options
 	
@@ -45,6 +47,7 @@ function Potok(handlers, options){
 	}
 	
 	this._pass_nulls = !!options.pass_nulls;
+	this._diverpotent = !!options.diverpotent;
 	
 	// ############# handlers
 	if(typeof(handlers) !== 'object'){
@@ -144,21 +147,18 @@ Potok.prototype._end = function _end(lazy_end){
 	}).tap(function(){
 		this._closed = true;
 		this._results_closed = true;
-	}).then(this._removeNullsFromResults.bind(this, this._promises)) //all promised entered
-	.then(function(results){
+	}) //all promised entered
+	.tap(function(results){
 		if(this._handlers.afterAll){
 			var overwrite_push = Object.create(this);
 			overwrite_push.push = this.pushFinal;
-			var after_all = when.try(this._handlers.afterAll, overwrite_push);
-			
-			return after_all
-				.then(this._removeNullsFromResults.bind(this, this._promises));
-		} else {
-			return results;
+			return when.try(this._handlers.afterAll, overwrite_push);
 		}
+		return true;
 	}).tap(function(){
 		this._results_closed = true;
-	}).done(this._deferred_end.resolve, this._deferred_end.reject);
+	}).then(this._removeNullsFromResults.bind(this, this._promises))
+	.done(this._deferred_end.resolve, this._deferred_end.reject);
 	
 	return this;
 };
@@ -206,7 +206,11 @@ Potok.prototype.enter = function enter(value){
 };
 
 Potok.prototype._push = function _push(value){
-	this._promises.push(when(value));
+	var new_length = this._promises.push(when(value).finally(function(){
+		if(this._diverpotent){
+			delete this._promises[new_length-1];
+		}
+	}.bind(this)));
 	this._chained.forEach(function(chained){
 		this._pass(chained, value).done();
 	}, this);
@@ -264,9 +268,11 @@ Potok.prototype.chain = function(chained){
 	this._chained.push(chained);
 	
 	// enter all the promises that were initialized earlier
-	this._promises.forEach(function(promise){
-		this._pass(chained, promise).done();
-	}, this);
+	if(!this._diverpotent){
+		this._promises.forEach(function(promise){
+			this._pass(chained, promise).done();
+		}, this);
+	}
 	this.ended().yield(undefined).finally(chained.end.bind(chained));
 	
 	return chained;
