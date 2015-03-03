@@ -2,7 +2,7 @@
   "name": "potok",
   "version": "0.1.0",
   "description": "Object stream replacement using promises.",
-  "main": "index.js",
+  "main": "potok.js",
   "directories": {
     "test": "test"
   },
