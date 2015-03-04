@@ -1,3 +1,6 @@
+[![Build Status](https://travis-ci.org/OhJeez/potok.svg?branch=master)](https://travis-ci.org/OhJeez/potok)
+[![Coverage Status](https://coveralls.io/repos/OhJeez/potok/badge.svg)](https://coveralls.io/r/OhJeez/potok)
+
 #Potok
 
 Potok is a promise-based replacement for object stream. Potok instance accepts values (or promises which resolution) will be processed by user-defined handlers.
