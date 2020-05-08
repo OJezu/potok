@@ -1,5 +1,5 @@
-[![Build Status](https://travis-ci.org/OhJeez/potok.svg?branch=master)](https://travis-ci.org/OhJeez/potok)
-[![Coverage Status](https://coveralls.io/repos/OhJeez/potok/badge.svg)](https://coveralls.io/r/OhJeez/potok)
+[![Build Status](https://travis-ci.org/ojezu/potok.svg?branch=master)](https://travis-ci.org/ojezu/potok)
+[![Coverage Status](https://coveralls.io/repos/ojezu/potok/badge.svg)](https://coveralls.io/r/ojezu/potok)
 
 #Potok
 
